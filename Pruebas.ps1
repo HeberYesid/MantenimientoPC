@@ -62,9 +62,11 @@ try {
 
     $null = Crear-Falso $sandbox 'igual-a.txt' 'solo duplicado ficticio'
     $null = Crear-Falso $sandbox 'igual-b.txt' 'solo duplicado ficticio'
+    $distinto = Crear-Falso $sandbox 'distinto.txt' 'Solo duplicado ficticio'
     $null = Crear-Falso $fuera 'no-analizado.txt' 'solo duplicado ficticio'
     $dup = Buscar-Duplicados @($sandbox)
     Afirmar ($dup -like '*igual-a.txt*' -and $dup -like '*igual-b.txt*' -and $dup -notlike '*no-analizado.txt*') 'El análisis de duplicados no respeta contenido/alcance.'
+    Afirmar ($dup -notlike '*distinto.txt*' -and [IO.File]::ReadAllText($distinto) -ceq 'Solo duplicado ficticio') 'Un archivo del mismo tamaño pero distinto contenido se marcó como duplicado o se modificó.'
     'PASA: duplicados por contenido y aislamiento de carpetas elegidas.'
 
     $h1 = Hallazgo prueba 'Prueba comparativa' 'Alerta' 'Ficticia' 1 2
@@ -80,6 +82,18 @@ try {
     Afirmar (@(Comparar @($fallo) @(@{Hallazgos=@($sinFallo)},@{Hallazgos=@($fallo)})).Count -eq 1) 'Reaparición tras una lectura completa omitida.'
     'PASA: alerta nueva, sin cambios, empeorada, fuente intermitente y reaparición tras una lectura completa.'
 
+    # Una revisión nueva no debe reemplazar datos que esta versión no sabe leer.
+    $rutaHistorial = Join-Path $script:Datos 'historial.json'
+    foreach ($contenido in '{"Version":1,"Informes":[', '{"Version":2,"Informes":[]}') {
+        [IO.File]::WriteAllText($rutaHistorial,$contenido)
+        $huellaAntes = (Get-FileHash -LiteralPath $rutaHistorial).Hash
+        $errorLectura = $null
+        try { Ejecutar-Revision Mensual Manual | Out-Null } catch { $errorLectura = $_.Exception.Message }
+        Afirmar ($errorLectura -like '*historial*' -and (Get-FileHash -LiteralPath $rutaHistorial).Hash -eq $huellaAntes) 'La revisión no rechazó y conservó intacto el historial ilegible.'
+    }
+    [IO.File]::Delete($rutaHistorial)
+    'PASA: se preservan tanto el historial truncado como el de versión desconocida.'
+
     $r = @(Ejecutar-Revision Semanal Manual)
     Afirmar ($r.Count -eq 1 -and $r[0].Origen -eq 'Manual' -and $r[0].Hallazgos.Count -ge 10) 'No se produjo el informe semanal manual.'
     foreach ($id in 'temp','inicio','eventos-disco','fallos','reinicio','update','defender','firewall','backup','filehistory') {
@@ -91,6 +105,16 @@ try {
     $m = (Medir-Lentitud 3 1000) -join "`n"
     foreach ($tipo in 'CPU','RAM','Disco') { Afirmar ($m -match "${tipo}: .*3/3") "No se midió $tipo en las tres muestras de este equipo." }
     'PASA: pasada manual semanal/mensual, historial aislado y diagnóstico real con tres muestras por recurso.'
+
+    # Mismo nombre y ejecutable, pero argumentos de otra aplicación.
+    $ajeno = (New-Object -ComObject WScript.Shell).CreateShortcut($atajo)
+    $ajeno.TargetPath = Motor-Windows; $ajeno.Arguments = '-NoProfile'; $ajeno.Save()
+    $huellaAntes = (Get-FileHash -LiteralPath $atajo).Hash
+    $errorAcceso = $null
+    try { Crear-Acceso $atajo } catch { $errorAcceso = $_.Exception.Message }
+    Afirmar ($errorAcceso -like '*no pertenece*' -and (Get-FileHash -LiteralPath $atajo).Hash -eq $huellaAntes) 'La instalación no rechazó y conservó intacto el acceso ajeno.'
+    [IO.File]::Delete($atajo)
+    'PASA: un acceso directo ajeno con el mismo nombre no se sobrescribe.'
 
     Crear-Acceso $atajo
     Afirmar (Acceso-Propio $atajo) 'No se pudo validar el acceso directo temporal.'
