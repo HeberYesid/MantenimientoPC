@@ -53,6 +53,8 @@ Si la tarea está en curso, espera a que termine. Tras retirar la integración, 
 
 ## Verificación local
 
+GitHub Actions ejecuta la suite básica en Windows Server 2022 con Windows PowerShell 5.1 en cada push a `main` y en las solicitudes de cambio hacia esa rama. También se puede iniciar desde **Actions → CI de Windows → Run workflow**. Las pruebas de interfaz y del Programador de tareas se ejecutan por separado en una sesión de escritorio con el segundo comando.
+
 ```powershell
 powershell.exe -NoProfile -STA -File .\Pruebas.ps1
 powershell.exe -NoProfile -STA -File .\Pruebas.ps1 -Interfaz -Programador

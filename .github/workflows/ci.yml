@@ -1,0 +1,26 @@
+name: CI de Windows
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pruebas:
+    name: Pruebas con Windows PowerShell 5.1
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - name: Obtener el código
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Ejecutar la suite sin escritorio interactivo
+        shell: powershell
+        run: .\Pruebas.ps1
