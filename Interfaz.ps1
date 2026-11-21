@@ -14,14 +14,18 @@ function Mostrar-Aviso($informe) {
     try { $timer.Start(); $w.ShowDialog() | Out-Null } finally { $timer.Dispose(); $w.Dispose() }
 }
 
-function Boton($padre,[string]$texto) {
+function Boton($padre,[string]$texto,[switch]$Principal) {
     $b = [Windows.Forms.Button]::new(); $b.Text = $texto; $b.AutoSize = $true
-    $b.MinimumSize = [Drawing.Size]::new(0,34); $b.Padding = [Windows.Forms.Padding]::new(8,0,8,0)
+    $b.MinimumSize = [Drawing.Size]::new(0,36); $b.Padding = [Windows.Forms.Padding]::new(10,0,10,0)
+    if ($Principal -and ![Windows.Forms.SystemInformation]::HighContrast) {
+        $b.FlatStyle = 'Flat'; $b.BackColor = [Drawing.ColorTranslator]::FromHtml('#155C70'); $b.ForeColor = [Drawing.Color]::White
+        $b.FlatAppearance.BorderSize = 1; $b.FlatAppearance.BorderColor = $b.BackColor
+    }
     $padre.Controls.Add($b); $b
 }
 function Fila($padre) {
     $f = [Windows.Forms.FlowLayoutPanel]::new(); $f.Dock = 'Top'; $f.AutoSize = $true
-    $f.Padding = [Windows.Forms.Padding]::new(8,4,8,4); $padre.Controls.Add($f); $f
+    $f.Padding = [Windows.Forms.Padding]::new(0,4,0,8); $padre.Controls.Add($f); $f
 }
 function Texto-Lectura($padre,[string]$nombre) {
     $box = [Windows.Forms.TextBox]::new(); $box.Dock = 'Fill'; $box.Multiline = $true; $box.ReadOnly = $true
@@ -62,8 +66,11 @@ function Actualizar-HistorialUI {
         foreach ($i in $script:HistUI) {
             $null = $script:SelectorHist.Items.Add("$(([datetimeoffset]$i.Fecha).LocalDateTime.ToString('g')) · $($i.Tipo) · $($i.Origen)")
         }
-        if ($script:HistUI.Count) { $script:SelectorHist.SelectedIndex = 0 } else { $script:InformeBox.Text = 'Todavía no hay revisiones. Ejecuta una comprobación para crear el primer informe.' }
-    } catch { $script:InformeBox.Text = $_.Exception.Message }
+        $script:SelectorHist.Enabled = $script:HistUI.Count -gt 0
+        if ($script:HistUI.Count) { $script:SelectorHist.SelectedIndex = 0 } else {
+            $script:Resumen.Text = 'Tu primera revisión'; $script:InformeBox.Text = 'Pulsa «Revisar semana» para comprobar el equipo y guardar tu primer informe. La revisión solo consulta información.'
+        }
+    } catch { $script:Resumen.Text = 'Historial no disponible'; $script:SelectorHist.Enabled = $false; $script:InformeBox.Text = $_.Exception.Message }
 }
 function Lanzar-Trabajo($codigo, $argumentos, $fin, $estado) {
     if ($script:Trabajo) { return }
@@ -91,24 +98,35 @@ function Mostrar-Interfaz([string]$CarpetaPruebaUI) {
     $w.Text = 'Mantenimiento PC'; $w.StartPosition = 'CenterScreen'; $w.Size = [Drawing.Size]::new(1030,710)
     $w.MinimumSize = [Drawing.Size]::new(790,540); $w.Font = [Drawing.Font]::new('Segoe UI',10)
     $w.AutoScaleMode = 'Dpi'
-    $cab = [Windows.Forms.Label]::new(); $cab.Dock = 'Top'; $cab.Height = 69
-    $cab.Padding = [Windows.Forms.Padding]::new(15,11,8,0); $cab.Font = [Drawing.Font]::new('Segoe UI',17)
-    $cab.Text = 'Mantenimiento PC'; $cab.BackColor = [Drawing.SystemColors]::Control
+    $cab = [Windows.Forms.Panel]::new(); $cab.Dock = 'Top'; $cab.Height = 88; $cab.Padding = [Windows.Forms.Padding]::new(18,8,18,8)
+    if (![Windows.Forms.SystemInformation]::HighContrast) { $cab.BackColor = [Drawing.ColorTranslator]::FromHtml('#193D4A'); $cab.ForeColor = [Drawing.Color]::White }
+    $titulo = [Windows.Forms.Label]::new(); $titulo.Dock = 'Top'; $titulo.Height = 40; $titulo.Font = [Drawing.Font]::new('Segoe UI',19,[Drawing.FontStyle]::Bold)
+    $ayuda = [Windows.Forms.Label]::new(); $ayuda.Dock = 'Fill'; $ayuda.TextAlign = 'MiddleLeft'; $cab.Controls.Add($ayuda); $cab.Controls.Add($titulo)
     $script:Pie = [Windows.Forms.Label]::new(); $script:Pie.Dock = 'Bottom'; $script:Pie.Height = 30; $script:Pie.Padding = [Windows.Forms.Padding]::new(10,5,0,0)
     $script:Pie.Text = 'Las revisiones son de solo lectura. Ninguna limpieza se ejecuta en segundo plano.'
     $tabs = [Windows.Forms.TabControl]::new(); $tabs.Dock = 'Fill'; $tabs.Padding = [Drawing.Point]::new(12,6)
     $w.Controls.Add($tabs); $w.Controls.Add($script:Pie); $w.Controls.Add($cab)
     $p = @{}; foreach ($nombre in 'Revisiones','Lentitud','Limpieza','Duplicados','Programa y herramientas') {
         $tab = [Windows.Forms.TabPage]::new($nombre); $tab.UseVisualStyleBackColor = $true
-        $tabs.TabPages.Add($tab); $p[$nombre] = $tab
+        $tab.Padding = [Windows.Forms.Padding]::new(14,6,14,12); $tabs.TabPages.Add($tab); $p[$nombre] = $tab
     }
+    $encabezados = @('Revisiones del equipo','Diagnóstico de lentitud','Limpieza de temporales','Archivos duplicados','Mantenimiento programado')
+    $instrucciones = @('Comprueba el estado del equipo o consulta una revisión anterior.','Inicia la medición mientras el equipo esté lento para identificar qué recursos está usando.','Primero busca archivos. Después podrás revisar la lista y elegir cuáles eliminar.','Compara el contenido de hasta tres carpetas. Los resultados son de solo lectura.','Elige cuándo revisar el equipo y abre las herramientas de Windows que necesites.')
+    $titulo.Text = $encabezados[0]; $ayuda.Text = $instrucciones[0]
+    $tabs.Add_SelectedIndexChanged({ if ($tabs.SelectedIndex -ge 0) { $titulo.Text = $encabezados[$tabs.SelectedIndex]; $ayuda.Text = $instrucciones[$tabs.SelectedIndex] } }.GetNewClosure())
     $script:InformeBox = Texto-Lectura $p.Revisiones 'Informe de revisión'; $script:InformeBox.TabIndex = 2
+    $script:Resumen = [Windows.Forms.Label]::new(); $script:Resumen.Dock = 'Top'; $script:Resumen.Height = 42; $script:Resumen.TextAlign = 'MiddleLeft'
+    $script:Resumen.Font = [Drawing.Font]::new('Segoe UI',12,[Drawing.FontStyle]::Bold); $p.Revisiones.Controls.Add($script:Resumen)
     $script:SelectorHist = [Windows.Forms.ComboBox]::new(); $script:SelectorHist.Dock = 'Top'; $script:SelectorHist.DropDownStyle = 'DropDownList'
     $script:SelectorHist.AccessibleName = 'Seleccionar informe del historial'; $script:SelectorHist.TabIndex = 1
     $p.Revisiones.Controls.Add($script:SelectorHist)
-    $script:SelectorHist.Add_SelectedIndexChanged({ if ($script:SelectorHist.SelectedIndex -ge 0) { $script:InformeBox.Text = Texto-Informe $script:HistUI[$script:SelectorHist.SelectedIndex] } })
+    $script:SelectorHist.Add_SelectedIndexChanged({ if ($script:SelectorHist.SelectedIndex -ge 0) {
+        $i = $script:HistUI[$script:SelectorHist.SelectedIndex]; $script:InformeBox.Text = Texto-Informe $i
+        $script:Resumen.Text = if ($i.Tipo -eq 'Mensual') { 'Inventario mensual' } elseif ($i.Avisos.Count) { "Avisos nuevos o empeorados: $($i.Avisos.Count)" } else { 'Sin avisos nuevos entre las señales disponibles' }
+    } })
+    $lblHist = [Windows.Forms.Label]::new(); $lblHist.Text = 'Historial de revisiones'; $lblHist.Dock = 'Top'; $lblHist.Height = 24; $p.Revisiones.Controls.Add($lblHist)
     $r = Fila $p.Revisiones; $r.TabIndex = 0
-    $sem = Boton $r 'Revisar &semana'; $mes = Boton $r 'Revisar &mes'; $hist = Boton $r 'Recargar &historial'
+    $sem = Boton $r 'Revisar &semana' -Principal; $mes = Boton $r 'Revisar &mes'; $hist = Boton $r 'Recargar &historial'
     $sem.Add_Click({ Lanzar-Trabajo 'Ejecutar-Revision Semanal Manual' @() { Actualizar-HistorialUI } 'Consultando señales de Windows…' })
     $mes.Add_Click({ Lanzar-Trabajo 'Ejecutar-Revision Mensual Manual' @() { Actualizar-HistorialUI } 'Inventariando carpetas, aplicaciones y batería…' })
     $hist.Add_Click({ Actualizar-HistorialUI })
@@ -116,7 +134,7 @@ function Mostrar-Interfaz([string]$CarpetaPruebaUI) {
     $script:LentoBox = Texto-Lectura $p.Lentitud 'Resultados del diagnóstico'; $script:LentoBox.TabIndex = 1
     $script:LentoBox.Text = 'Si el equipo está lento ahora, inicia el muestreo y sigue usando el programa que notas lento. No se cierran procesos.'
     $r = Fila $p.Lentitud; $r.TabIndex = 0
-    $medir = Boton $r '¿Por qué está &lento ahora?'
+    $medir = Boton $r '¿Por qué está &lento ahora?' -Principal
     $medir.Add_Click({ Lanzar-Trabajo 'Medir-Lentitud' @() { param($o) $script:LentoBox.Text = ($o -join "`r`n") } 'Midiendo CPU, memoria y discos; espera unos segundos…' })
 
     $script:ResultadoLimpieza = Texto-Lectura $p.Limpieza 'Criterios y resultado de limpieza'; $script:ResultadoLimpieza.Dock = 'Bottom'; $script:ResultadoLimpieza.Height = 118; $script:ResultadoLimpieza.TabIndex = 2
@@ -126,14 +144,15 @@ function Mostrar-Interfaz([string]$CarpetaPruebaUI) {
     $p.Limpieza.Controls.Add($script:ListaLimpieza)
     $r = Fila $p.Limpieza; $r.TabIndex = 0
     $script:ListaLimpieza.BringToFront()
-    $buscar = Boton $r 'Buscar &temporales'; $quitar = Boton $r '&Eliminar selección'; $script:BotonEliminar = $quitar; $quitar.Enabled = $false
+    $script:ListaLimpieza.CheckOnClick = $true
+    $buscar = Boton $r 'Buscar &temporales' -Principal; $quitar = Boton $r '&Eliminar selección'; $script:BotonEliminar = $quitar; $quitar.Enabled = $false
     $buscar.Add_Click({
         Lanzar-Trabajo 'param($prueba) if ($prueba) { [ArchivosMpc]::Buscar($prueba,[datetime]::UtcNow.AddDays(-14)) } else { Temporales }' @($script:RaizPruebaUI) {
             param($o) $t = $o[0]; $script:Candidatos = @($t.Archivos); $script:ListaLimpieza.Items.Clear()
             foreach ($i in $script:Candidatos) { $null = $script:ListaLimpieza.Items.Add("$(Tamano $i.Bytes) | $($i.Modificado.ToLocalTime().ToString('g')) | $($i.Ruta)", $false) }
-            $script:BotonEliminar.Enabled = $false
+            $script:BotonEliminar.Enabled = $false; $script:BotonEliminar.Text = '&Eliminar selección'
             $c = if ($t.Limitada -or $t.Inaccesibles) { " Vista parcial; inaccesibles: $($t.Inaccesibles)." } else { '' }
-            $script:ResultadoLimpieza.Text = "$($script:Candidatos.Count) candidatos.$c Marca individualmente los que quieras eliminar."
+            $script:ResultadoLimpieza.Text = if ($script:Candidatos.Count) { "$($script:Candidatos.Count) archivos encontrados.$c Marca los que quieras eliminar." } else { "No se encontraron temporales que cumplan los criterios.$c" }
         } 'Preparando una vista previa de solo lectura…'
     })
     $script:ListaLimpieza.Add_ItemCheck({
@@ -141,6 +160,7 @@ function Mostrar-Interfaz([string]$CarpetaPruebaUI) {
         $cuenta = $sender.CheckedIndices.Count
         if ($e.CurrentValue -eq 'Checked') { $cuenta-- }; if ($e.NewValue -eq 'Checked') { $cuenta++ }
         $script:BotonEliminar.Enabled = !$script:Trabajo -and $cuenta -gt 0
+        $script:BotonEliminar.Text = if ($cuenta) { "&Eliminar selección ($cuenta)" } else { '&Eliminar selección' }
     })
     $quitar.Add_Click({
         $elegidos = @($script:ListaLimpieza.CheckedIndices | ForEach-Object { $script:Candidatos[$_] })
@@ -148,7 +168,7 @@ function Mostrar-Interfaz([string]$CarpetaPruebaUI) {
         $total = 0L; foreach ($i in $elegidos) { $total += $i.Bytes }
         if (!(Confirmar "¿Eliminar permanentemente solo los $($elegidos.Count) archivos marcados en la vista previa ($(Tamano $total) de tamaño lógico)? No irán a la papelera." 'Confirmar eliminación')) { return }
         Lanzar-Trabajo 'param($lista,$prueba) $raiz = if ($prueba) { $prueba } else { Raiz-Temporal }; Quitar-Seleccion $raiz $lista' (@(,@($elegidos)) + @($script:RaizPruebaUI)) {
-            param($o) $script:Candidatos = @(); $script:ListaLimpieza.Items.Clear(); $script:BotonEliminar.Enabled = $false
+            param($o) $script:Candidatos = @(); $script:ListaLimpieza.Items.Clear(); $script:BotonEliminar.Enabled = $false; $script:BotonEliminar.Text = '&Eliminar selección'
             $ok = @($o | Where-Object { $_ -like 'Eliminado y verificado:*' }).Count
             $script:ResultadoLimpieza.Text = "Eliminados y verificados: $ok de $($o.Count). El tamaño lógico no garantiza espacio liberado.`r`n" + ($o -join "`r`n")
         } 'Eliminando solo la selección confirmada y verificando cada resultado…'
@@ -159,7 +179,7 @@ function Mostrar-Interfaz([string]$CarpetaPruebaUI) {
     $script:DupRaices = [Windows.Forms.Label]::new(); $script:DupRaices.Dock = 'Top'; $script:DupRaices.Height = 58
     $script:DupRaices.Text = 'Ninguna carpeta elegida.'; $p.Duplicados.Controls.Add($script:DupRaices)
     $r = Fila $p.Duplicados; $r.TabIndex = 0
-    $agregar = Boton $r '&Elegir carpeta'; $limpiar = Boton $r '&Quitar carpetas de la lista'; $dup = Boton $r '&Buscar duplicados'
+    $agregar = Boton $r '&Elegir carpeta' -Principal; $limpiar = Boton $r '&Quitar carpetas de la lista'; $dup = Boton $r '&Buscar duplicados'
     $script:BotonDup = $dup; $dup.Enabled = $false
     $agregar.Add_Click({
         if ($script:RaicesElegidas.Count -ge 3) { Mensaje-Error 'El límite es de tres carpetas.'; return }
@@ -192,7 +212,7 @@ function Mostrar-Interfaz([string]$CarpetaPruebaUI) {
     Etiqueta $r 'H&ora local:'
     $script:HoraUI = [Windows.Forms.DateTimePicker]::new(); $script:HoraUI.Format = 'Custom'; $script:HoraUI.CustomFormat = 'HH:mm'; $script:HoraUI.ShowUpDown = $true
     $script:HoraUI.Value = [datetime]::Today.AddHours(18); $script:HoraUI.Width = 82; $script:HoraUI.AccessibleName = 'Hora local'; $r.Controls.Add($script:HoraUI)
-    $g = Boton $r '&Guardar horario'; $script:BotonPausa = Boton $r '&Pausar'; $ref = Boton $r '&Ver estado'
+    $g = Boton $r '&Guardar horario' -Principal; $script:BotonPausa = Boton $r '&Pausar'; $ref = Boton $r '&Ver estado'
     $g.Add_Click({ try { Guardar-Programa ([DayOfWeek]$script:DiaUI.SelectedIndex) $script:HoraUI.Value; Actualizar-ProgramaUI } catch { Mensaje-Error $_.Exception.Message } })
     $script:BotonPausa.Add_Click({ try { Cambiar-Pausa; Actualizar-ProgramaUI } catch { Mensaje-Error $_.Exception.Message } })
     $ref.Add_Click({ Actualizar-ProgramaUI })
@@ -235,12 +255,15 @@ function Mostrar-Interfaz([string]$CarpetaPruebaUI) {
                     0 { $c.Revisar.PerformClick() }
                     1 {
                         if ($script:HistUI.Count -ne 3 -or $script:InformeBox.Text -notlike 'Mensual*') { throw 'La revisión no llegó al historial visible.' }
-                        $c.Tabs.SelectedTab = $c.Pagina; $c.Buscar.PerformClick()
+                        if ($script:Resumen.Text -ne 'Inventario mensual') { throw 'El resumen no corresponde al informe seleccionado.' }
+                        $c.Tabs.SelectedTab = $c.Pagina
+                        if ($titulo.Text -ne 'Limpieza de temporales') { throw 'La cabecera no refleja la sección activa.' }
+                        $c.Buscar.PerformClick()
                     }
                     2 {
                         if ($script:ListaLimpieza.Items.Count -ne 2 -or $script:ListaLimpieza.CheckedIndices.Count -or $c.Quitar.Enabled) { throw 'Vista previa inesperada o selección automática.' }
                         for ($i=0; $i -lt $script:Candidatos.Count; $i++) { if ($script:Candidatos[$i].Ruta -eq $objetivo) { $script:ListaLimpieza.SetItemChecked($i,$true) } }
-                        if (!$c.Quitar.Enabled) { throw 'No se habilitó el botón al marcar un candidato.' }
+                        if (!$c.Quitar.Enabled -or $c.Quitar.Text -notlike '*(1)') { throw 'La acción de eliminar no refleja la selección.' }
                         $script:ConfirmacionPruebaUI = $false; $c.Quitar.PerformClick()
                         if ($script:Trabajo -or ![IO.File]::Exists($objetivo)) { throw 'Cancelar la confirmación no fue inocuo.' }
                         $script:ConfirmacionPruebaUI = $true; $c.Quitar.PerformClick()
